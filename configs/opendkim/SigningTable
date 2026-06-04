@@ -1,0 +1,9 @@
+# ============================================================
+# OpenDKIM Signing Table
+# Maps domains to signing keys
+# ============================================================
+# Format: domain selector._domainkey.domain
+# This will be updated by install.sh
+
+# Default entry (will be replaced by install.sh)
+example.com mail._domainkey.example.com

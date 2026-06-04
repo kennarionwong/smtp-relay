@@ -1,0 +1,28 @@
+services:
+  smtp:
+    build: .
+    container_name: smtp-relay
+    restart: unless-stopped
+    hostname: mail.example.com
+    domainname: example.com
+    ports:
+      - "587:587"
+    volumes:
+      - ./data/dkim:/data/dkim
+      - ./data/certs:/data/certs
+      - ./data/users:/data/users
+      - ./configs/postfix/main.cf:/etc/postfix/main.cf
+      - ./configs/postfix/master.cf:/etc/postfix/master.cf
+      - ./configs/postfix/sasl/smtpd.conf:/etc/postfix/sasl/smtpd.conf
+      - ./configs/opendkim:/etc/opendkim
+      - ./configs/pam/smtp:/etc/pam.d/smtp
+    environment:
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    sysctls:
+      - net.ipv4.ip_local_port_range=1024 65535

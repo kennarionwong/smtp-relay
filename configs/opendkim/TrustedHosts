@@ -1,0 +1,13 @@
+# ============================================================
+# OpenDKIM Trusted Hosts
+# Hosts that are trusted for DKIM signing
+# ============================================================
+
+# Localhost
+127.0.0.1
+::1
+localhost
+
+# Default domain (will be replaced by install.sh)
+example.com
+mail.example.com

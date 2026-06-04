@@ -1,0 +1,9 @@
+# ============================================================
+# OpenDKIM Key Table
+# Maps domain+selector to key file
+# ============================================================
+# Format: selector._domainkey.domain:domain:selector:/etc/opendkim/keys/selector.private
+# This will be updated by install.sh
+
+# Default entry (will be replaced by install.sh)
+mail._domainkey.example.com:example.com:mail:/etc/opendkim/keys/example.com/mail.private

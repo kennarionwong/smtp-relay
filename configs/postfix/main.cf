@@ -1,0 +1,129 @@
+# ============================================================
+# Postfix Main Configuration
+# SMTP Relay with SASL, TLS, and DKIM
+# ============================================================
+
+# General
+compatibility_level = 3.6
+smtpd_banner = $myhostname ESMTP
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+
+# Hostname and domain
+myhostname = mail.example.com
+mydomain = example.com
+myorigin = $mydomain
+mydestination = $myhostname, localhost.$mydomain, localhost
+mynetworks = 127.0.0.0/8
+
+# Mail queue
+maximal_queue_lifetime = 1d
+bounce_queue_lifetime = 1d
+maximal_backoff_time = 4000s
+minimal_backoff_time = 300s
+queue_run_delay = 300s
+
+# Message size limit (50MB)
+message_size_limit = 52428800
+
+# Mailbox size limit (0 = unlimited)
+mailbox_size_limit = 0
+
+# Recipient restrictions
+smtpd_recipient_restrictions =
+    permit_sasl_authenticated,
+    permit_mynetworks,
+    reject_unauth_destination
+
+# ============================================================
+# TLS Configuration
+# ============================================================
+# Server-side TLS (incoming)
+smtpd_tls_security_level = may
+smtpd_tls_auth_only = yes
+smtpd_tls_cert_file = /data/certs/mail.crt
+smtpd_tls_key_file = /data/certs/mail.key
+smtpd_tls_CAfile =
+smtpd_tls_security_level = may
+smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+smtpd_tls_ciphers = medium
+smtpd_tls_mandatory_ciphers = high
+smtpd_tls_loglevel = 1
+smtpd_tls_received_header = yes
+
+# Client-side TLS (outgoing)
+smtp_tls_security_level = may
+smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+smtp_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1
+smtp_tls_ciphers = medium
+smtp_tls_mandatory_ciphers = high
+smtp_tls_loglevel = 1
+smtp_tls_note_starttls_offer = yes
+
+# ============================================================
+# SASL Authentication (via Cyrus SASL + PAM)
+# ============================================================
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_type = cyrus
+smtpd_sasl_path = smtpd
+smtpd_sasl_security_options = noanonymous, noplaintext
+smtpd_sasl_tls_security_options = noanonymous
+smtpd_sasl_local_domain = $myhostname
+smtpd_sasl_authenticated_header = yes
+
+# Postfix SMTP AUTH configuration
+broken_sasl_auth_clients = yes
+smtpd_sasl_service = smtp
+cyrus_sasl_config_path = /etc/postfix/sasl
+
+# Rate limiting
+smtpd_client_connection_rate_limit = 30
+smtpd_client_message_rate_limit = 60
+smtpd_client_auth_rate_limit = 10
+anvil_rate_time_unit = 60s
+
+# ============================================================
+# Relay Configuration (optional)
+# ============================================================
+# Uncomment and configure for upstream relay
+# relayhost = [smtp.example.com]:587
+# smtp_sasl_auth_enable = yes
+# smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+# smtp_sasl_security_options = noanonymous
+# smtp_sasl_tls_security_options = noanonymous
+# smtp_use_tls = yes
+
+# ============================================================
+# DKIM Configuration (via OpenDKIM milter)
+# ============================================================
+milter_default_action = accept
+milter_protocol = 6
+smtpd_milters = local:/opendkim/opendkim.sock
+non_smtpd_milters = local:/opendkim/opendkim.sock
+
+# ============================================================
+# Logging
+# ============================================================
+maillog_file = /var/log/mail.log
+
+# ============================================================
+# Additional Security
+# ============================================================
+disable_vrfy_command = yes
+smtpd_helo_required = yes
+smtpd_helo_restrictions =
+    permit_mynetworks,
+    reject_invalid_helo_hostname,
+    reject_non_fqdn_helo_hostname
+
+smtpd_sender_restrictions =
+    permit_sasl_authenticated,
+    permit_mynetworks,
+    reject_non_fqdn_sender,
+    reject_unknown_sender_domain
+
+smtpd_data_restrictions =
+    reject_unauth_pipelining,
+    reject_multi_recipient_bounce

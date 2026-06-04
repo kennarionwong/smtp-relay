@@ -1,0 +1,6 @@
+#
+# PAM configuration for SMTP SASL authentication
+# Uses local system accounts with nologin shell
+#
+auth    required    pam_unix.so    nullok_secure
+account required    pam_unix.so
