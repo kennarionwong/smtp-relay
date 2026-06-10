@@ -23,7 +23,7 @@ REQUIRED_FILES=(
     "/etc/postfix/main.cf"
     "/etc/postfix/master.cf"
     "/etc/postfix/sasl/smtpd.conf"
-    "/etc/opendkim/opendkim.conf"
+    "/etc/opendkim.conf"
 )
 
 MISSING=0
@@ -278,7 +278,7 @@ fi
 
 log "Starting OpenDKIM..."
 chown opendkim:opendkim /var/run/opendkim 2>/dev/null || true
-opendkim -x /etc/opendkim/opendkim.conf
+opendkim -x /etc/opendkim.conf
 sleep 1
 pgrep opendkim > /dev/null && log "OpenDKIM started." || log "WARNING: OpenDKIM failed."
 

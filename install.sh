@@ -676,7 +676,7 @@ Socket                  local:/var/spool/postfix/var/run/opendkim/opendkim.sock
 UserID                  opendkim:opendkim
 
 # Key table
-KeyTable                refile:/etc/opendkim/KeyTable
+KeyTable                file:/etc/opendkim/KeyTable
 
 # Signing table
 SigningTable             refile:/etc/opendkim/SigningTable
@@ -931,6 +931,7 @@ services:
       - ./configs/postfix/main.cf:/etc/postfix/main.cf
       - ./configs/postfix/master.cf:/etc/postfix/master.cf
       - ./configs/postfix/sasl/smtpd.conf:/etc/postfix/sasl/smtpd.conf
+      - ./configs/opendkim/opendkim.conf:/etc/opendkim.conf
       - ./configs/opendkim:/etc/opendkim
       - ./configs/pam/smtp:/etc/pam.d/smtp
     environment:
