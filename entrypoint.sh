@@ -106,7 +106,7 @@ ${POSTFIX_HOSTNAME}
 TRUSTEDEOF
 
     cat > /etc/opendkim/KeyTable << KEYEOF
-${DKIM_SELECTOR}._domainkey.${POSTFIX_DOMAIN} ${POSTFIX_DOMAIN}:${DKIM_SELECTOR}:/etc/opendkim/keys/${POSTFIX_DOMAIN}/${DKIM_SELECTOR}.private
+${DKIM_SELECTOR}._domainkey.${POSTFIX_DOMAIN}:${POSTFIX_DOMAIN}:${DKIM_SELECTOR}:/etc/opendkim/keys/${POSTFIX_DOMAIN}/${DKIM_SELECTOR}.private
 KEYEOF
 
     cat > /etc/opendkim/SigningTable << SIGNEOF
@@ -242,12 +242,10 @@ chmod 640 /etc/postfix/sasl/smtpd.conf 2>/dev/null || true
 chown -R opendkim:opendkim /etc/opendkim
 chmod -R 700 /etc/opendkim/keys 2>/dev/null || true
 
-if ! groups postfix 2>/dev/null | grep -qw opendkim; then
-    usermod -aG opendkim postfix 2>/dev/null || true
-    log "  Added postfix to opendkim group (DKIM socket access)"
-fi
-
-chmod 750 /var/spool/postfix/var/run/opendkim 2>/dev/null || true
+# Use world-accessible permissions so postfix can reach the DKIM socket.
+# We do NOT add postfix to opendkim group because OpenDKIM rejects private
+# keys if its own group (opendkim) has other members (security check).
+chmod 755 /var/spool/postfix/var/run/opendkim 2>/dev/null || true
 chown opendkim:opendkim /var/spool/postfix/var/run/opendkim 2>/dev/null || true
 
 chmod 700 /data/dkim /data/certs /data/users 2>/dev/null || true

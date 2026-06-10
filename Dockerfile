@@ -52,9 +52,11 @@ COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && \
     chmod +x /usr/local/bin/*.sh 2>/dev/null || true
 
-# OpenDKIM socket directory
+# OpenDKIM socket directory - world-accessible so Postfix (running as postfix
+# user, NOT in opendkim group) can reach the milter socket. OpenDKIM rejects
+# keys if its group has other members, so we use 755 instead of group access.
 RUN chown opendkim:opendkim /var/spool/postfix/var/run/opendkim && \
-    chmod 750 /var/spool/postfix/var/run/opendkim
+    chmod 755 /var/spool/postfix/var/run/opendkim
 
 # Set proper permissions
 RUN chown -R opendkim:opendkim /etc/opendkim && \
@@ -65,9 +67,6 @@ RUN useradd -r -s /usr/sbin/nologin -M saslauthd 2>/dev/null || true
 
 # Create smtpusers group for SMTP authentication
 RUN groupadd -r smtpusers 2>/dev/null || true
-
-# Add postfix user to opendkim group so Postfix can access the DKIM socket
-RUN usermod -aG opendkim postfix 2>/dev/null || true
 
 # Configure rsyslog to log to stdout
 RUN echo '# Mail logging to stdout' > /etc/rsyslog.d/50-default.conf && \
