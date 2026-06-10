@@ -717,7 +717,7 @@ EOF
         
         # SigningTable
         cat > "configs/opendkim/SigningTable" << EOF
-${DKIM_DOMAIN} ${DKIM_SELECTOR}._domainkey.${DKIM_DOMAIN}
+*@${DKIM_DOMAIN} ${DKIM_SELECTOR}._domainkey.${DKIM_DOMAIN}
 EOF
         
         log_success "OpenDKIM tables generated"

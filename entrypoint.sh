@@ -110,7 +110,7 @@ ${DKIM_SELECTOR}._domainkey.${POSTFIX_DOMAIN}:${POSTFIX_DOMAIN}:${DKIM_SELECTOR}
 KEYEOF
 
     cat > /etc/opendkim/SigningTable << SIGNEOF
-${POSTFIX_DOMAIN} ${DKIM_SELECTOR}._domainkey.${POSTFIX_DOMAIN}
+*@${POSTFIX_DOMAIN} ${DKIM_SELECTOR}._domainkey.${POSTFIX_DOMAIN}
 SIGNEOF
 
     log "  DKIM tables regenerated."
