@@ -676,10 +676,10 @@ Socket                  local:/var/spool/postfix/var/run/opendkim/opendkim.sock
 UserID                  opendkim:opendkim
 
 # Key table
-KeyTable                file:/etc/opendkim/KeyTable
+KeyTable                refile:/etc/opendkim/KeyTable
 
 # Signing table
-SigningTable             file:/etc/opendkim/SigningTable
+SigningTable             refile:/etc/opendkim/SigningTable
 
 # Trusted hosts
 InternalHosts           /etc/opendkim/TrustedHosts
