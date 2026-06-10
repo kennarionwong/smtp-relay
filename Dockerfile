@@ -66,6 +66,9 @@ RUN useradd -r -s /usr/sbin/nologin -M saslauthd 2>/dev/null || true
 # Create smtpusers group for SMTP authentication
 RUN groupadd -r smtpusers 2>/dev/null || true
 
+# Add postfix user to opendkim group so Postfix can access the DKIM socket
+RUN usermod -aG opendkim postfix 2>/dev/null || true
+
 # Configure rsyslog to log to stdout
 RUN echo '# Mail logging to stdout' > /etc/rsyslog.d/50-default.conf && \
     echo '*.* /dev/stdout' >> /etc/rsyslog.d/50-default.conf

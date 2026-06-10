@@ -253,6 +253,18 @@ chmod 640 /etc/postfix/sasl/smtpd.conf 2>/dev/null || true
 chown -R opendkim:opendkim /etc/opendkim
 chmod -R 700 /etc/opendkim/keys 2>/dev/null || true
 
+# CRITICAL: Postfix needs access to the OpenDKIM milter socket.
+# The socket directory is chown opendkim:opendkim with 750 perms.
+# Postfix runs as 'postfix' user; adding it to opendkim group grants access.
+if ! groups postfix 2>/dev/null | grep -qw opendkim; then
+    usermod -aG opendkim postfix 2>/dev/null || true
+    log "  Added postfix user to opendkim group (required for DKIM socket access)"
+fi
+
+# Ensure socket directory has group-read-execute so postfix (in opendkim group) can access
+chmod 750 /var/spool/postfix/var/run/opendkim 2>/dev/null || true
+chown opendkim:opendkim /var/spool/postfix/var/run/opendkim 2>/dev/null || true
+
 chmod 700 /data/dkim /data/certs /data/users 2>/dev/null || true
 
 mkdir -p /var/run/opendkim
