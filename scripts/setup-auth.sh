@@ -99,20 +99,18 @@ add_user() {
     echo "$password" | passwd --stdin "$username" 2>/dev/null || \
         echo "$username:$password" | chpasswd 2>/dev/null
     
-    # Generate password hash for persistent storage
-    hash=$(openssl passwd -6 "$password" 2>/dev/null)
-    
-    # Update persistent users file
+    # Store plaintext password in persistent users file
+    # (entrypoint.sh will hash it inside the container with compatible crypt lib)
     mkdir -p "$USER_HASH_DIR"
     if [ -f "$USERS_FILE" ]; then
         grep -v "^${username}:" "$USERS_FILE" > "${USERS_FILE}.tmp" 2>/dev/null || true
         mv "${USERS_FILE}.tmp" "$USERS_FILE" 2>/dev/null || true
     fi
-    echo "${username}:${hash}:5000:5000" >> "$USERS_FILE"
+    echo "${username}:${password}" >> "$USERS_FILE"
     chmod 600 "$USERS_FILE"
     
     echo "✓ User '$username' created (shell: /usr/sbin/nologin)"
-    echo "  Password hash saved to $USERS_FILE"
+    echo "  Credentials saved to $USERS_FILE"
 }
 
 remove_user() {
@@ -202,17 +200,15 @@ change_password() {
     
     # Update persistent file
     if [ -f "$USERS_FILE" ] || [ -d "$USER_HASH_DIR" ]; then
-        local hash
-        hash=$(openssl passwd -6 "$password" 2>/dev/null)
         mkdir -p "$USER_HASH_DIR"
         
         if [ -f "$USERS_FILE" ]; then
             grep -v "^${username}:" "$USERS_FILE" > "${USERS_FILE}.tmp" 2>/dev/null || true
             mv "${USERS_FILE}.tmp" "$USERS_FILE" 2>/dev/null || true
         fi
-        echo "${username}:${hash}:5000:5000" >> "$USERS_FILE"
+        echo "${username}:${password}" >> "$USERS_FILE"
         chmod 600 "$USERS_FILE"
-        echo "✓ Password hash updated in $USERS_FILE"
+        echo "✓ Credentials updated in $USERS_FILE"
     fi
 }
 

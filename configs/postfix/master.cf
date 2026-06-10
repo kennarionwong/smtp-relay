@@ -37,6 +37,9 @@ local     unix  -       n       n       -       -       local
 
 virtual   unix  -       n       n       -       -       virtual
 
+# Default SMTP transport (outbound delivery)
+smtp      unix  -       -       y       -       -       smtp
+
 # Relay through upstream
 relay     unix  -             n       n       -       -       smtp
   -o syslog_name=postfix/relay

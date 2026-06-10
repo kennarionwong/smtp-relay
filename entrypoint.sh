@@ -123,13 +123,30 @@ fi
 if [ -f "/data/users/smtp-users" ] && [ -s "/data/users/smtp-users" ]; then
     log "Creating SMTP users from /data/users/smtp-users..."
     
-    while IFS=: read -r username password_hash uid gid; do
+    while IFS=: read -r username password_or_hash extra1 extra2; do
         [ -z "$username" ] && continue
         
         # Skip comments
         case "$username" in
             \#*) continue ;;
         esac
+        
+        password_hash=""
+        
+        # Detect format: 2 fields = plaintext (username:password)
+        #                4 fields = pre-hashed (username:hash:uid:gid) -- legacy
+        if [ -n "$extra2" ]; then
+            # Legacy format: pre-hashed with uid/gid fields
+            password_hash="$password_or_hash"
+        else
+            # New format: plaintext - hash it now, inside the container
+            # This ensures crypt library compatibility with the container's OS
+            password_hash=$(openssl passwd -6 "$password_or_hash" 2>/dev/null)
+            if [ -z "$password_hash" ]; then
+                log "  ERROR: Failed to hash password for '$username'"
+                continue
+            fi
+        fi
         
         # Create user if not exists, with nologin shell and smtpusers group
         if ! id "$username" &>/dev/null; then
@@ -147,13 +164,15 @@ if [ -f "/data/users/smtp-users" ] && [ -s "/data/users/smtp-users" ]; then
             fi
         fi
         
-        # Set password directly from hash if available
+        # Set password from hash
         if [ -n "$password_hash" ]; then
             if echo "${username}:${password_hash}" | chpasswd -e 2>&1; then
                 log "  Set password for: $username"
             else
-                log "  ERROR: Failed to set password for '$username' - hash may be malformed"
+                log "  ERROR: Failed to set password for '$username' (hash may not be compatible with this container's crypt lib)"
             fi
+        else
+            log "  ERROR: No password/hash available for '$username'"
         fi
     done < /data/users/smtp-users
     log "SMTP users configured."
@@ -161,7 +180,6 @@ else
     log "No SMTP users file found at /data/users/smtp-users"
     log "Create users by running: docker exec smtp-relay add-smtp-user <username>"
 fi
-
 
 # ============================================================
 # Ensure correct permissions
@@ -225,15 +243,12 @@ if pgrep saslauthd > /dev/null; then
     if [ -f "/data/users/smtp-users" ] && [ -s "/data/users/smtp-users" ]; then
         log "Verifying SASL users..."
         SASL_AUTH_FAILED=0
-        while IFS=: read -r username password_hash uid gid; do
+        while IFS=: read -r username password_or_hash extra1 extra2; do
             [ -z "$username" ] && continue
             case "$username" in
                 \#*) continue ;;
             esac
             
-            # Use testsaslauthd to verify the user can authenticate
-            # We can't test with the plain password since we only have the hash,
-            # but we can confirm the user exists and the PAM service is responding
             if id "$username" &>/dev/null; then
                 # Quick sanity check: does the PAM service respond for this user?
                 if testsaslauthd -u "$username" -p "test" -f /var/run/saslauthd/mux -r smtp 2>/dev/null; then

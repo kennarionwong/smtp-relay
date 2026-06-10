@@ -526,8 +526,11 @@ local     unix  -       n       n       -       -       local
 
 virtual   unix  -       n       n       -       -       virtual
 
+# Default SMTP transport (outbound delivery)
+smtp      unix  -       -       y       -       -       smtp
+
 # Relay through upstream
-relay     unix  -             n       n       -       -       smtp
+relay     unix  -       -       n       -       -       smtp
   -o syslog_name=postfix/relay
   -o smtp_helo_timeout=5
   -o smtp_connect_timeout=5
@@ -887,21 +890,16 @@ setup_sasl_users() {
     
     mkdir -p data/users
     
-    # Create users file for persistent storage
+    # Create users file for persistent storage (plaintext: hashing is done inside container)
     > "data/users/smtp-users"
     
     for user_entry in "${USERS[@]}"; do
         local username="${user_entry%%:*}"
         local password="${user_entry#*:}"
         
-        # Generate encrypted password hash (SHA-512)
-        local enc_password
-        if enc_password=$(openssl passwd -6 "$password" 2>&1) && [ -n "$enc_password" ]; then
-            echo "${username}:${enc_password}:5000:5000" >> "data/users/smtp-users"
-            log_success "User '${username}' added to SMTP users database"
-        else
-            log_error "Failed to generate password hash for '${username}': ${enc_password:-unknown error}"
-        fi
+        # Store plaintext password - the container will hash it with compatible crypt lib
+        echo "${username}:${password}" >> "data/users/smtp-users"
+        log_success "User '${username}' added to SMTP users database"
     done
     
     chmod 600 "data/users/smtp-users"
