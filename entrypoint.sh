@@ -40,14 +40,67 @@ if [ "$MISSING" -eq 1 ]; then
 fi
 
 # ============================================================
-# Validate DKIM keys if DKIM is configured
+# Read domain and hostname from Postfix config
+# ============================================================
+POSTFIX_DOMAIN=$(postconf -h mydomain 2>/dev/null || echo "example.com")
+POSTFIX_HOSTNAME=$(postconf -h myhostname 2>/dev/null || echo "mail.example.com")
+log "Postfix domain: $POSTFIX_DOMAIN"
+log "Postfix hostname: $POSTFIX_HOSTNAME"
+
+# ============================================================
+# Validate DKIM keys and tables
 # ============================================================
 if grep -q "milter_default_action = accept" /etc/postfix/main.cf 2>/dev/null; then
-    log "DKIM is configured, checking keys..."
-    
+    log "DKIM is configured, checking keys and tables..."
+
+    # Auto-regenerate DKIM tables if they still have example.com placeholder
+    if grep -q "example.com" /etc/opendkim/KeyTable 2>/dev/null; then
+        log "DKIM tables contain example.com placeholder - regenerating for $POSTFIX_DOMAIN..."
+
+        # Discover DKIM selector from existing keys
+        DKIM_SELECTOR=""
+        if [ -d "/data/dkim/${POSTFIX_DOMAIN}" ]; then
+            for keyfile in "/data/dkim/${POSTFIX_DOMAIN}/"*.private; do
+                if [ -f "$keyfile" ]; then
+                    DKIM_SELECTOR=$(basename "$keyfile" .private)
+                    log "  Found DKIM key: selector=$DKIM_SELECTOR, domain=$POSTFIX_DOMAIN"
+                    break
+                fi
+            done
+        fi
+
+        # Fallback selector if no keys found
+        if [ -z "$DKIM_SELECTOR" ]; then
+            DKIM_SELECTOR="mail"
+            log "  No DKIM keys found, using default selector: $DKIM_SELECTOR"
+        fi
+
+        # Regenerate TrustedHosts
+        cat > /etc/opendkim/TrustedHosts << TRUSTEDEOF
+127.0.0.1
+::1
+localhost
+${POSTFIX_DOMAIN}
+${POSTFIX_HOSTNAME}
+TRUSTEDEOF
+        log "  Regenerated /etc/opendkim/TrustedHosts"
+
+        # Regenerate KeyTable
+        cat > /etc/opendkim/KeyTable << KEYEOF
+${DKIM_SELECTOR}._domainkey.${POSTFIX_DOMAIN}:${POSTFIX_DOMAIN}:${DKIM_SELECTOR}:/etc/opendkim/keys/${POSTFIX_DOMAIN}/${DKIM_SELECTOR}.private
+KEYEOF
+        log "  Regenerated /etc/opendkim/KeyTable"
+
+        # Regenerate SigningTable
+        cat > /etc/opendkim/SigningTable << SIGNEOF
+${POSTFIX_DOMAIN} ${DKIM_SELECTOR}._domainkey.${POSTFIX_DOMAIN}
+SIGNEOF
+        log "  Regenerated /etc/opendkim/SigningTable"
+    fi
+
+    # Copy DKIM keys from volume to opendkim config directory
     if [ -d "/data/dkim" ] && [ "$(ls -A /data/dkim 2>/dev/null)" ]; then
-        log "DKIM keys found in /data/dkim"
-        
+        log "Copying DKIM keys from /data/dkim..."
         for domain_dir in /data/dkim/*/; do
             if [ -d "$domain_dir" ]; then
                 domain=$(basename "$domain_dir")
@@ -55,11 +108,11 @@ if grep -q "milter_default_action = accept" /etc/postfix/main.cf 2>/dev/null; th
                 cp -u "$domain_dir"* "/etc/opendkim/keys/$domain/" 2>/dev/null || true
                 chown -R opendkim:opendkim "/etc/opendkim/keys/$domain"
                 chmod -R 600 "/etc/opendkim/keys/$domain"
+                log "  Copied DKIM keys for domain: $domain"
             fi
         done
     else
-        log "WARNING: DKIM is configured but no keys found in /data/dkim"
-        log "DKIM signing will not work without keys. Run install.sh to generate keys."
+        log "WARNING: No DKIM keys found in /data/dkim"
     fi
 fi
 
@@ -105,17 +158,15 @@ cat > /etc/pam.d/smtp << 'PAMSMTP'
 #
 # PAM configuration for SMTP SASL authentication
 # Uses local system accounts with nologin shell
-# Users must be in the 'smtpusers' group
 #
 auth    required    pam_unix.so    nullok_secure
 account required    pam_unix.so
 PAMSMTP
 log "  PAM service 'smtp' configured"
 
-# CRITICAL: pam_unix.so account module checks that the user's shell is listed in
-# /etc/shells. Since SMTP users have /usr/sbin/nologin (not in /etc/shells by
-# default on Debian), we must add it - otherwise all authentication is rejected
-# even if the password is correct.
+# CRITICAL: pam_unix.so account module checks that the user's shell is listed
+# in /etc/shells. SMTP users have /usr/sbin/nologin which is NOT in /etc/shells
+# by default on Debian. Without this, all auth is rejected even with correct password.
 if ! grep -qx '/usr/sbin/nologin' /etc/shells 2>/dev/null; then
     echo '/usr/sbin/nologin' >> /etc/shells
     log "  Added /usr/sbin/nologin to /etc/shells (required for PAM account check)"
@@ -131,63 +182,63 @@ fi
 # ============================================================
 if [ -f "/data/users/smtp-users" ] && [ -s "/data/users/smtp-users" ]; then
     log "Creating SMTP users from /data/users/smtp-users..."
-    
+
     while IFS=: read -r username password_or_hash extra1 extra2; do
         [ -z "$username" ] && continue
-        
+
         # Skip comments
         case "$username" in
             \#*) continue ;;
         esac
-        
-        password_hash=""
-        
-        # Detect format: 2 fields = plaintext (username:password)
-        #                4 fields = pre-hashed (username:hash:uid:gid) -- legacy
+
+        plaintext_password=""
+        pre_hashed=""
+
         if [ -n "$extra2" ]; then
-            # Legacy format: pre-hashed with uid/gid fields
-            password_hash="$password_or_hash"
+            # Legacy: 4 fields (username:hash:uid:gid)
+            pre_hashed="$password_or_hash"
         else
-            # New format: plaintext - hash it now, inside the container
-            # This ensures crypt library compatibility with the container's OS
-            password_hash=$(openssl passwd -6 "$password_or_hash" 2>/dev/null)
-            if [ -z "$password_hash" ]; then
-                log "  ERROR: Failed to hash password for '$username'"
-                continue
-            fi
+            # New format: 2 fields (username:password) - plaintext
+            plaintext_password="$password_or_hash"
         fi
-        
-        # Create user if not exists, with nologin shell and smtpusers group
+
+        # Create user if not exists
         if ! id "$username" &>/dev/null; then
             if useradd_out=$(useradd -M -s /usr/sbin/nologin -d "/home/$username" -G smtpusers "$username" 2>&1); then
-                log "  Created system user: $username (shell: /usr/sbin/nologin, group: smtpusers)"
+                log "  Created system user: $username"
             else
                 log "  ERROR: Failed to create system user '$username': $useradd_out"
                 continue
             fi
         else
-            # Ensure existing user is in smtpusers group
             if ! groups "$username" 2>/dev/null | grep -qw smtpusers; then
                 usermod -aG smtpusers "$username" 2>/dev/null || true
                 log "  Added $username to smtpusers group"
             fi
         fi
-        
-        # Set password from hash
-        if [ -n "$password_hash" ]; then
-            if echo "${username}:${password_hash}" | chpasswd -e 2>&1; then
+
+        # Set password: chpasswd directly on plaintext (system handles hashing
+        # with PAM-compatible crypt). For pre-hashed, use chpasswd -e.
+        if [ -n "$plaintext_password" ]; then
+            if echo "${username}:${plaintext_password}" | chpasswd 2>&1; then
                 log "  Set password for: $username"
             else
-                log "  ERROR: Failed to set password for '$username' (hash may not be compatible with this container's crypt lib)"
+                log "  ERROR: Failed to set password for '$username'"
+            fi
+        elif [ -n "$pre_hashed" ]; then
+            if echo "${username}:${pre_hashed}" | chpasswd -e 2>&1; then
+                log "  Set password for: $username (legacy hash)"
+            else
+                log "  ERROR: Failed to set password for '$username' from legacy hash"
             fi
         else
-            log "  ERROR: No password/hash available for '$username'"
+            log "  ERROR: No password available for '$username'"
         fi
     done < /data/users/smtp-users
     log "SMTP users configured."
 else
     log "No SMTP users file found at /data/users/smtp-users"
-    log "Create users by running: docker exec smtp-relay add-smtp-user <username>"
+    log "Create users with: docker exec smtp-relay add-smtp-user <username>"
 fi
 
 # ============================================================
@@ -195,24 +246,19 @@ fi
 # ============================================================
 log "Setting file permissions..."
 
-# Postfix
 chown -R root:root /etc/postfix
 chmod 644 /etc/postfix/main.cf /etc/postfix/master.cf 2>/dev/null || true
 chmod 640 /etc/postfix/sasl/smtpd.conf 2>/dev/null || true
 
-# OpenDKIM
 chown -R opendkim:opendkim /etc/opendkim
 chmod -R 700 /etc/opendkim/keys 2>/dev/null || true
 
-# Data directories
 chmod 700 /data/dkim /data/certs /data/users 2>/dev/null || true
 
-# OpenDKIM run directory
 mkdir -p /var/run/opendkim
 chown opendkim:opendkim /var/run/opendkim
 chmod 755 /var/run/opendkim
 
-# saslauthd run directories
 mkdir -p /var/run/saslauthd
 mkdir -p /var/spool/postfix/var/run/saslauthd
 chown saslauthd:saslauthd /var/run/saslauthd /var/spool/postfix/var/run/saslauthd 2>/dev/null || true
@@ -224,7 +270,6 @@ chmod 755 /var/run/saslauthd /var/spool/postfix/var/run/saslauthd
 log "Starting rsyslog..."
 rsyslogd
 sleep 1
-
 if pgrep rsyslogd > /dev/null; then
     log "rsyslog started successfully."
 else
@@ -235,8 +280,6 @@ fi
 # Start saslauthd (SASL authentication daemon)
 # ============================================================
 log "Starting saslauthd..."
-
-# Ensure correct ownership of saslauthd socket directory
 chown saslauthd:saslauthd /var/run/saslauthd 2>/dev/null || true
 chmod 755 /var/run/saslauthd
 
@@ -245,37 +288,27 @@ sleep 2
 
 if pgrep saslauthd > /dev/null; then
     log "saslauthd started successfully (PAM mechanism)."
-    
-    # ============================================================
-    # Verify SASL users if any exist
-    # ============================================================
+
+    # Verify SASL users
     if [ -f "/data/users/smtp-users" ] && [ -s "/data/users/smtp-users" ]; then
         log "Verifying SASL users..."
         SASL_AUTH_FAILED=0
         while IFS=: read -r username password_or_hash extra1 extra2; do
             [ -z "$username" ] && continue
-            case "$username" in
-                \#*) continue ;;
-            esac
-            
+            case "$username" in \#*) continue ;; esac
+
             if id "$username" &>/dev/null; then
-                # Quick sanity check: does the PAM service respond for this user?
                 if testsaslauthd -u "$username" -p "test" -f /var/run/saslauthd/mux -r smtp 2>/dev/null; then
-                    log "  WARNING: testsaslauthd returned unexpected OK for '$username' with test password"
+                    log "  WARNING: testsaslauthd returned unexpected OK for '$username' (test pass)"
                 else
                     log "  User '$username' exists and PAM service is responding"
                 fi
             else
-                log "  WARNING: User '$username' not found in system, SASL auth will fail"
+                log "  WARNING: User '$username' not in system, SASL auth will fail"
                 SASL_AUTH_FAILED=1
             fi
         done < /data/users/smtp-users
-        
-        if [ "$SASL_AUTH_FAILED" -eq 0 ]; then
-            log "All SASL users verified successfully."
-        else
-            log "WARNING: Some SASL users may not be properly configured. Check logs for details."
-        fi
+        [ "$SASL_AUTH_FAILED" -eq 0 ] && log "All SASL users verified successfully."
     fi
 else
     log "WARNING: saslauthd failed to start."
@@ -285,12 +318,10 @@ fi
 # Start OpenDKIM
 # ============================================================
 log "Starting OpenDKIM..."
-
 chown opendkim:opendkim /var/run/opendkim 2>/dev/null || true
 
 opendkim -x /etc/opendkim/opendkim.conf
 sleep 1
-
 if pgrep opendkim > /dev/null; then
     log "OpenDKIM started successfully."
 else
@@ -303,7 +334,6 @@ fi
 log "Starting Postfix..."
 postfix start
 sleep 1
-
 if pgrep master > /dev/null; then
     log "Postfix started successfully."
 else
@@ -313,21 +343,28 @@ fi
 # ============================================================
 # Print summary
 # ============================================================
-SASL_AUTH=$(grep -c 'smtpd_sasl_auth_enable' /etc/postfix/main.cf 2>/dev/null || echo 0)
-
 log "============================================================"
 log "SMTP Relay is running!"
-log "  - Submission port: 587"
-log "  - TLS: enabled ($([ -f /data/certs/mail.crt ] && echo 'certificate found' || echo 'self-signed'))"
-log "  - SASL: $(pgrep saslauthd > /dev/null && echo 'running (PAM: local users)' || echo 'not running')"
-log "  - DKIM: $(pgrep opendkim > /dev/null && echo 'running' || echo 'not running')"
-log "  - Relay: $(postconf -h relayhost 2>/dev/null | head -1 || echo 'direct')"
+log "  Port: 587 (Submission)"
+log "  Domain: $POSTFIX_DOMAIN"
+log "  Hostname: $POSTFIX_HOSTNAME"
+log "  TLS: $([ -f /data/certs/mail.crt ] && echo 'enabled' || echo 'self-signed')"
+log "  SASL: $(pgrep saslauthd > /dev/null && echo 'running (PAM)' || echo 'NOT running')"
+log "  DKIM: $(pgrep opendkim > /dev/null && echo 'running' || echo 'NOT running')"
+
+# Show DKIM signing domain
+if grep -q "milter_default_action = accept" /etc/postfix/main.cf 2>/dev/null; then
+    dkim_domain=$(grep -v '^#' /etc/opendkim/SigningTable 2>/dev/null | awk '{print $1}' | head -1)
+    [ -n "$dkim_domain" ] && log "  DKIM signing: $dkim_domain"
+fi
+
+log "  Relay: $(postconf -h relayhost 2>/dev/null | head -1 || echo 'direct delivery')"
 log "============================================================"
 
 # ============================================================
 # Keep container running and follow logs
 # ============================================================
-log "Following logs (Ctrl+C to stop)..."
+log "Following logs..."
 
 tail -F /var/log/mail.log /var/log/syslog /var/log/auth.log 2>/dev/null &
 TAIL_PID=$!
