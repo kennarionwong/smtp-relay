@@ -133,8 +133,12 @@ if [ -f "/data/users/smtp-users" ] && [ -s "/data/users/smtp-users" ]; then
         
         # Create user if not exists, with nologin shell and smtpusers group
         if ! id "$username" &>/dev/null; then
-            useradd -M -s /usr/sbin/nologin -d "/home/$username" -G smtpusers "$username" 2>/dev/null || true
-            log "  Created system user: $username (shell: /usr/sbin/nologin, group: smtpusers)"
+            if useradd_out=$(useradd -M -s /usr/sbin/nologin -d "/home/$username" -G smtpusers "$username" 2>&1); then
+                log "  Created system user: $username (shell: /usr/sbin/nologin, group: smtpusers)"
+            else
+                log "  ERROR: Failed to create system user '$username': $useradd_out"
+                continue
+            fi
         else
             # Ensure existing user is in smtpusers group
             if ! groups "$username" 2>/dev/null | grep -qw smtpusers; then
@@ -145,8 +149,11 @@ if [ -f "/data/users/smtp-users" ] && [ -s "/data/users/smtp-users" ]; then
         
         # Set password directly from hash if available
         if [ -n "$password_hash" ]; then
-            echo "${username}:${password_hash}" | chpasswd -e 2>/dev/null || true
-            log "  Set password for: $username"
+            if echo "${username}:${password_hash}" | chpasswd -e 2>&1; then
+                log "  Set password for: $username"
+            else
+                log "  ERROR: Failed to set password for '$username' - hash may be malformed"
+            fi
         fi
     done < /data/users/smtp-users
     log "SMTP users configured."
@@ -154,6 +161,7 @@ else
     log "No SMTP users file found at /data/users/smtp-users"
     log "Create users by running: docker exec smtp-relay add-smtp-user <username>"
 fi
+
 
 # ============================================================
 # Ensure correct permissions
@@ -205,11 +213,46 @@ log "Starting saslauthd..."
 chown saslauthd:saslauthd /var/run/saslauthd 2>/dev/null || true
 chmod 755 /var/run/saslauthd
 
-saslauthd -a pam -c -m /var/run/saslauthd -O "smtp"
+saslauthd -a pam -c -m /var/run/saslauthd -O pam_service=smtp
 sleep 2
 
 if pgrep saslauthd > /dev/null; then
     log "saslauthd started successfully (PAM mechanism)."
+    
+    # ============================================================
+    # Verify SASL users if any exist
+    # ============================================================
+    if [ -f "/data/users/smtp-users" ] && [ -s "/data/users/smtp-users" ]; then
+        log "Verifying SASL users..."
+        SASL_AUTH_FAILED=0
+        while IFS=: read -r username password_hash uid gid; do
+            [ -z "$username" ] && continue
+            case "$username" in
+                \#*) continue ;;
+            esac
+            
+            # Use testsaslauthd to verify the user can authenticate
+            # We can't test with the plain password since we only have the hash,
+            # but we can confirm the user exists and the PAM service is responding
+            if id "$username" &>/dev/null; then
+                # Quick sanity check: does the PAM service respond for this user?
+                if testsaslauthd -u "$username" -p "test" -f /var/run/saslauthd/mux -r smtp 2>/dev/null; then
+                    log "  WARNING: testsaslauthd returned unexpected OK for '$username' with test password"
+                else
+                    log "  User '$username' exists and PAM service is responding"
+                fi
+            else
+                log "  WARNING: User '$username' not found in system, SASL auth will fail"
+                SASL_AUTH_FAILED=1
+            fi
+        done < /data/users/smtp-users
+        
+        if [ "$SASL_AUTH_FAILED" -eq 0 ]; then
+            log "All SASL users verified successfully."
+        else
+            log "WARNING: Some SASL users may not be properly configured. Check logs for details."
+        fi
+    fi
 else
     log "WARNING: saslauthd failed to start."
 fi

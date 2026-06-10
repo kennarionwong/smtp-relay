@@ -896,13 +896,11 @@ setup_sasl_users() {
         
         # Generate encrypted password hash (SHA-512)
         local enc_password
-        enc_password=$(openssl passwd -6 "$password" 2>/dev/null)
-        
-        if [ -n "$enc_password" ]; then
+        if enc_password=$(openssl passwd -6 "$password" 2>&1) && [ -n "$enc_password" ]; then
             echo "${username}:${enc_password}:5000:5000" >> "data/users/smtp-users"
             log_success "User '${username}' added to SMTP users database"
         else
-            log_error "Failed to generate password hash for '${username}'"
+            log_error "Failed to generate password hash for '${username}': ${enc_password:-unknown error}"
         fi
     done
     
