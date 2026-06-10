@@ -456,8 +456,8 @@ EOF
 # ============================================================
 milter_default_action = accept
 milter_protocol = 6
-smtpd_milters = local:/var/spool/postfix/var/run/opendkim/opendkim.sock
-non_smtpd_milters = local:/var/spool/postfix/var/run/opendkim/opendkim.sock
+smtpd_milters = local:/var/spool/postfix/opendkim/opendkim.sock
+non_smtpd_milters = local:/var/spool/postfix/opendkim/opendkim.sock
 
 POSTFIX_DKIM
     fi
@@ -670,7 +670,7 @@ Mode                    sv
 PidFile                 /var/run/opendkim/opendkim.pid
 
 # Socket
-Socket                  local:/var/spool/postfix/var/run/opendkim/opendkim.sock
+Socket                  local:/var/spool/postfix/opendkim/opendkim.sock
 
 # User and group
 UserID                  opendkim:opendkim
@@ -712,7 +712,7 @@ EOF
         
         # KeyTable
         cat > "configs/opendkim/KeyTable" << EOF
-${DKIM_SELECTOR}._domainkey.${DKIM_DOMAIN} ${DKIM_DOMAIN}:${DKIM_SELECTOR}:/etc/opendkim/keys/${DKIM_DOMAIN}/${DKIM_SELECTOR}.private
+${DKIM_SELECTOR}._domainkey.${DKIM_DOMAIN}:${DKIM_DOMAIN}:${DKIM_SELECTOR}:/etc/opendkim/keys/${DKIM_DOMAIN}/${DKIM_SELECTOR}.private
 EOF
         
         # SigningTable

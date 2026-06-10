@@ -242,11 +242,13 @@ chmod 640 /etc/postfix/sasl/smtpd.conf 2>/dev/null || true
 chown -R opendkim:opendkim /etc/opendkim
 chmod -R 700 /etc/opendkim/keys 2>/dev/null || true
 
-# Use world-accessible permissions so postfix can reach the DKIM socket.
-# We do NOT add postfix to opendkim group because OpenDKIM rejects private
-# keys if its own group (opendkim) has other members (security check).
-chmod 755 /var/spool/postfix/var/run/opendkim 2>/dev/null || true
-chown opendkim:opendkim /var/spool/postfix/var/run/opendkim 2>/dev/null || true
+# DKIM socket directory: opendkim:postfix with setgid (2770).
+# OpenDKIM runs as opendkim:opendkim, but setgid ensures the socket file
+# inherits the 'postfix' group, letting Postfix connect without joining
+# the opendkim group (which would break OpenDKIM's key security check).
+mkdir -p /var/spool/postfix/opendkim
+chown opendkim:postfix /var/spool/postfix/opendkim 2>/dev/null || true
+chmod 2770 /var/spool/postfix/opendkim 2>/dev/null || true
 
 chmod 700 /data/dkim /data/certs /data/users 2>/dev/null || true
 

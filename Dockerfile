@@ -30,7 +30,7 @@ RUN apt-get update && \
 
 # Create required directories
 RUN mkdir -p /etc/postfix/dynamicmaps.cf.d && \
-    mkdir -p /var/spool/postfix/var/run/opendkim && \
+    mkdir -p /var/spool/postfix/opendkim && \
     mkdir -p /etc/opendkim/keys && \
     mkdir -p /var/run/opendkim && \
     mkdir -p /var/run/saslauthd && \
@@ -55,8 +55,8 @@ RUN chmod +x /entrypoint.sh && \
 # OpenDKIM socket directory - world-accessible so Postfix (running as postfix
 # user, NOT in opendkim group) can reach the milter socket. OpenDKIM rejects
 # keys if its group has other members, so we use 755 instead of group access.
-RUN chown opendkim:opendkim /var/spool/postfix/var/run/opendkim && \
-    chmod 755 /var/spool/postfix/var/run/opendkim
+RUN chown opendkim:postfix /var/spool/postfix/opendkim && \
+    chmod 770 /var/spool/postfix/opendkim
 
 # Set proper permissions
 RUN chown -R opendkim:opendkim /etc/opendkim && \
