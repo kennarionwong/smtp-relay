@@ -712,7 +712,7 @@ EOF
         
         # KeyTable
         cat > "configs/opendkim/KeyTable" << EOF
-${DKIM_SELECTOR}._domainkey.${DKIM_DOMAIN} ${DKIM_DOMAIN} ${DKIM_SELECTOR} /etc/opendkim/keys/${DKIM_DOMAIN}/${DKIM_SELECTOR}.private
+${DKIM_SELECTOR}._domainkey.${DKIM_DOMAIN}:${DKIM_DOMAIN}:${DKIM_SELECTOR}:/etc/opendkim/keys/${DKIM_DOMAIN}/${DKIM_SELECTOR}.private
 EOF
         
         # SigningTable
