@@ -456,8 +456,8 @@ EOF
 # ============================================================
 milter_default_action = accept
 milter_protocol = 6
-smtpd_milters = local:/opendkim/opendkim.sock
-non_smtpd_milters = local:/opendkim/opendkim.sock
+smtpd_milters = local:/var/spool/postfix/var/run/opendkim/opendkim.sock
+non_smtpd_milters = local:/var/spool/postfix/var/run/opendkim/opendkim.sock
 
 POSTFIX_DKIM
     fi

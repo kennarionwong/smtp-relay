@@ -112,6 +112,15 @@ account required    pam_unix.so
 PAMSMTP
 log "  PAM service 'smtp' configured"
 
+# CRITICAL: pam_unix.so account module checks that the user's shell is listed in
+# /etc/shells. Since SMTP users have /usr/sbin/nologin (not in /etc/shells by
+# default on Debian), we must add it - otherwise all authentication is rejected
+# even if the password is correct.
+if ! grep -qx '/usr/sbin/nologin' /etc/shells 2>/dev/null; then
+    echo '/usr/sbin/nologin' >> /etc/shells
+    log "  Added /usr/sbin/nologin to /etc/shells (required for PAM account check)"
+fi
+
 # Ensure saslauthd can read shadow if needed
 if ! groups saslauthd 2>/dev/null | grep -qw shadow 2>/dev/null; then
     usermod -aG shadow saslauthd 2>/dev/null || true
