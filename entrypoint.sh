@@ -106,7 +106,7 @@ ${POSTFIX_HOSTNAME}
 TRUSTEDEOF
 
     cat > /etc/opendkim/KeyTable << KEYEOF
-${DKIM_SELECTOR}._domainkey.${POSTFIX_DOMAIN}:${POSTFIX_DOMAIN}:${DKIM_SELECTOR}:/etc/opendkim/keys/${POSTFIX_DOMAIN}/${DKIM_SELECTOR}.private
+${DKIM_SELECTOR}._domainkey.${POSTFIX_DOMAIN} ${POSTFIX_DOMAIN}:${DKIM_SELECTOR}:/etc/opendkim/keys/${POSTFIX_DOMAIN}/${DKIM_SELECTOR}.private
 KEYEOF
 
     cat > /etc/opendkim/SigningTable << SIGNEOF
